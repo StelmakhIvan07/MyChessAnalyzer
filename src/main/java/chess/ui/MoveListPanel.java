@@ -91,9 +91,10 @@ public class MoveListPanel extends JPanel {
 
     public void setAccuracy(Double white, Double black) {
         if(white == null) whiteAcc.setText("White: —");
+        else whiteAcc.setText(String.format(Locale.US, "White: %.1f%%", white));
+
         if(black == null) blackAcc.setText("Black: —");
-        whiteAcc.setText(String.format(Locale.US, "White: %.1f%%", white));
-        blackAcc.setText(String.format(Locale.US, "Black: %.1f%%", black));
+        else blackAcc.setText(String.format(Locale.US, "Black: %.1f%%", black));
     }
 
     private static Color colorFor(MoveClass cls) {
