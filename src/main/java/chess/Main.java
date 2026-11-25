@@ -38,7 +38,7 @@ public class Main {
         } catch (Exception e) {
             botEngine.close();
             analysisEngine.close();
-            showFatal("Рушій не відповів: " + e);
+            showFatal("Engine hasn't responded: " + e);
             return;
         }
 
@@ -46,13 +46,21 @@ public class Main {
             GameModel model = new GameModel();
             BoardPanel board = new BoardPanel(model);
             EvalBar bar = new EvalBar();
+            MoveListPanel list = new MoveListPanel();
 
-            GameController controller = new GameController(model, bot, board, analyzer, bar);
+            GameController controller = new GameController(model, bot, board, analyzer, bar, list);
+            NavigationPanel nav = new NavigationPanel(
+                    controller::first,
+                    controller::prev,
+                    controller::next,
+                    controller::last,
+                    controller::takeBack);
+
             board.setMoveHandler(controller::onPlayerMove);
 
             controller.newGame(Side.BLACK, 1500);
 
-            MainFrame frame = new MainFrame(board, bar);
+            MainFrame frame = new MainFrame(board, bar, list, nav);
             frame.setVisible(true);
 
             final Evaluation[] lastShown = { null };
@@ -72,6 +80,6 @@ public class Main {
 
     private static void showFatal(String msg) {
         SwingUtilities.invokeLater(() ->
-                JOptionPane.showMessageDialog(null, msg, "Помилка", JOptionPane.ERROR_MESSAGE));
+                JOptionPane.showMessageDialog(null, msg, "Error", JOptionPane.ERROR_MESSAGE));
     }
 }

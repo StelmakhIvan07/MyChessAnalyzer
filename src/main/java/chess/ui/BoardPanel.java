@@ -24,8 +24,8 @@ public class BoardPanel extends JPanel {
     private int cachedCoordCell = -1;
     private Font coordFont;
 
-    private final Color bgLight = new Color(222, 184, 135);
-    private final Color bgDark = new Color(139, 69, 19);
+    private final Color bgLight = new Color(235,236,208);
+    private final Color bgDark = new Color(115,160,82);
     private static final Map<Piece, String> PIECE_ICONS = new EnumMap<>(Piece.class);
     static {
         // White ♔ ♕ ♖ ♗ ♘ ♙
@@ -381,6 +381,12 @@ public class BoardPanel extends JPanel {
         tip.lineTo(bx + uy * half, by - ux * half);
         tip.closePath();
         g.fill(tip);
+    }
+
+    // Reset
+    public void resetInteraction() {
+        clearSelection();
+        repaint();
     }
     //===================================
 

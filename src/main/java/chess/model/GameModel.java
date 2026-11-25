@@ -12,6 +12,7 @@ public class GameModel {
     private final List<Move> moves = new ArrayList<>();
     private final List<String> positions = new ArrayList<>();
     private int currentMove = 0;
+    private GameResult finalResult = GameResult.ONGOING;
 
     private void rebuildBoard(int idx) {
         board.loadFromFen(START_FEN);
@@ -33,6 +34,8 @@ public class GameModel {
         positions.add(board.getFen());
 
         currentMove = 0;
+
+        updateResult();
     }
 
     public String fen() { return board.getFen(); }
@@ -58,6 +61,7 @@ public class GameModel {
         moves.add(move);
         positions.add(board.getFen());
         currentMove++;
+        updateResult();
         return MoveResult.OK;
     }
 
@@ -118,6 +122,7 @@ public class GameModel {
         moves.removeLast();
         positions.removeLast();
         rebuildBoard(moves.size());
+        updateResult();
         return true;
     }
 
@@ -142,14 +147,14 @@ public class GameModel {
     }
     //========================================
 
-    public GameResult result() {
-        if(board.isMated()) {
-            return sideToMove() == Side.WHITE? GameResult.BLACK_WINS: GameResult.WHITE_WINS;
-        }
-
-        if(board.isDraw()) return GameResult.DRAW;
-        return GameResult.ONGOING;
+    private void updateResult() {
+        if(board.isMated())
+            finalResult = sideToMove() == Side.WHITE ? GameResult.BLACK_WINS : GameResult.WHITE_WINS;
+        else if (board.isDraw()) finalResult = GameResult.DRAW;
+        else finalResult = GameResult.ONGOING;
     }
+
+    public GameResult result() { return finalResult; }
 
     public boolean isGameOver()  { return result() != GameResult.ONGOING; }
     public boolean isInCheck()   { return board.isKingAttacked(); }

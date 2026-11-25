@@ -1,5 +1,6 @@
 package chess;
 
+import chess.analysis.AccuracyCalculator;
 import chess.analysis.MoveClass;
 import chess.analysis.MoveClassifier;
 import chess.analysis.MoveReview;
@@ -22,6 +23,7 @@ public class GameController {
     private final BoardPanel view;
     private final Analyzer analyzer;
     private final EvalBar bar;
+    private final MoveListPanel list;
 
     private Side playerSide = Side.WHITE;
     private int gameId = 0;
@@ -33,14 +35,31 @@ public class GameController {
     private final List<MoveReview> reviews = new ArrayList<>();
     private int nextToReview = 0;
 
-    public GameController(GameModel model, Bot bot, BoardPanel view, Analyzer analyzer, EvalBar bar) {
+    public GameController(GameModel model, Bot bot, BoardPanel view, Analyzer analyzer, EvalBar bar, MoveListPanel list) {
         this.model = model;
         this.bot = bot;
         this.view = view;
         this.analyzer = analyzer;
         this.bar = bar;
+        this.list = list;
+
+        list.setOnSelect(this::goTo);
 
         new Timer(200, e -> refreshAnalysis()).start();
+    }
+
+    public void goTo(int idx) {
+        if (busy || !model.goTo(idx)) return;
+
+        view.resetInteraction();
+        showMoveFeedback(idx - 1);
+
+        lastShown = null;
+
+        if(model.isLive() && model.isGameOver()) analyzer.stopAnalysis();
+        else analyzer.analyze(model.fen());
+
+        refreshMoveList();
     }
 
     public MoveResult onPlayerMove(Square from, Square to, Piece promotion) {
@@ -58,14 +77,15 @@ public class GameController {
     }
 
     private void startAnalysis() {
-        if(!model.isGameOver()) analyzer.analyze(model.fen());
+        if(!model.isGameOver() || !model.isLive()) analyzer.analyze(model.fen());
     }
 
     private void afterMove() {
-        updateArrow();
-        view.clearBadge();
+        refreshMoveList();
+        showMoveFeedback(model.moveCount() - 1);
 
         if (model.isGameOver()) {
+            analyzer.stopAnalysis();
             GameResult r = model.result();
             SwingUtilities.invokeLater(() -> view.showResult(r));
             return;
@@ -80,10 +100,12 @@ public class GameController {
         bot.chooseMove(model.uciHistory())
                 .thenAccept(uci -> SwingUtilities.invokeLater(() -> {
                     if (id != gameId || uci == null) return;
+                    if (!model.isLive()) model.goTo(model.moveCount());
                     if(model.applyUci(uci) != MoveResult.OK) {
                         showError("Illegal bot's move: " + uci);
                         return;
                     }
+                    view.resetInteraction();
                     view.repaint();
                     afterMove();
                 }))
@@ -111,6 +133,7 @@ public class GameController {
         playerSide = side;
 
         model.reset();
+        refreshMoveList();
         view.setPlayerSide(side);
 
         bot.newGame()
@@ -132,7 +155,7 @@ public class GameController {
 
     public void refreshAnalysis() {
         reviewMoves();
-        if(model.isGameOver()) {
+        if(model.isGameOver() && model.isLive()) {
             bar.setResult(model.result());
             return;
         }
@@ -146,20 +169,11 @@ public class GameController {
         lastShown = ev; bar.setEvaluation(ev);
     }
 
-    private void updateArrow() {
-        List<String> played = model.uciHistory();
-        List<String> fens = model.fenHistory();
-        if (played.isEmpty()) { view.clearArrow(); return; }
+    private void refreshMoveList() {
+        list.setMoves(model.sanHistory(), new ArrayList<>(reviews));
+        list.setCurrent(model.currentIndex());
 
-        String lastMove = played.getLast();
-        Evaluation before = analyzer.get(fens.get(fens.size() - 2));   // FEN before move
-        String best = (before == null) ? null : before.bestMove();
-
-        if (best == null || best.equals(lastMove)) { view.clearArrow(); return; }
-
-        Square from = Square.valueOf(best.substring(0, 2).toUpperCase());
-        Square to   = Square.valueOf(best.substring(2, 4).toUpperCase());
-        view.setArrow(from, to);
+        refreshAccuracy();
     }
 
     private void showError(String msg) {
@@ -170,6 +184,8 @@ public class GameController {
         List<String> moves = model.uciHistory();
         List<String> fens = model.fenHistory();
 
+        boolean changed = false;
+
         while (nextToReview < moves.size()) {
             int i = nextToReview;
             boolean last = (i == moves.size() - 1);
@@ -177,7 +193,7 @@ public class GameController {
             String move = moves.get(i);
 
             Evaluation before = analyzer.get(fens.get(i));
-            if (!deepEnough(before)) { skipMove(); continue; }
+            if (!deepEnough(before)) { skipMove(); changed = true; continue; }
 
             double loss;
             if (last && model.isGameOver()) {
@@ -186,7 +202,7 @@ public class GameController {
                 Evaluation after = analyzer.get(fens.get(i + 1));
                 if (!deepEnough(after)) {
                     if (last) break;
-                    skipMove(); continue;
+                    skipMove(); changed = true; continue;
                 }
                 loss = MoveClassifier.loss(before, after, whiteMove);
             }
@@ -196,13 +212,66 @@ public class GameController {
 
             MoveClass cls = MoveClassifier.classify(loss, playedBest);
             reviews.add(new MoveReview(i, move, before.bestMove(), loss, cls));
+            changed = true;
             nextToReview++;
 
-            if (last) {
-                Square dest = Square.valueOf(move.substring(2, 4).toUpperCase());
-                view.setBadge(dest, cls);
+            if (i == model.currentIndex() - 1) {
+                view.setBadge(squareOf(move, 2), cls);
             }
         }
+
+        if (changed) refreshMoveList();
+    }
+
+    public void first() { goTo(0); }
+    public void prev() { goTo(model.currentIndex() - 1); }
+    public void next() { goTo(model.currentIndex() + 1); }
+    public void last() { goTo(model.moveCount()); }
+
+    private void showMoveFeedback(int ply) {
+        view.clearArrow();
+        view.clearBadge();
+
+        List<String> moves = model.uciHistory();
+        if(ply < 0 || ply >= moves.size()) return;
+
+        String played = moves.get(ply);
+        MoveReview r = (ply < reviews.size()) ? reviews.get(ply) : null;
+        Evaluation before = analyzer.get(model.fenHistory().get(ply));
+        String best = (r != null) ? r.best() : (before != null ? before.bestMove() : null);
+
+        if (r != null) view.setBadge(squareOf(played, 2), r.cls());
+        if (best != null && !best.equals(played))
+            view.setArrow(squareOf(best, 0), squareOf(best, 2));
+
+
+    }
+
+    public void takeBack() {
+        if(busy || !model.isLive()) return;
+        if(model.sideToMove() != playerSide && !model.isGameOver())
+            return;
+
+        do {
+            if (!model.undo()) break;
+        } while (model.sideToMove() != playerSide);
+
+        while (reviews.size() > model.moveCount()) reviews.removeLast();
+        nextToReview = Math.min(nextToReview, model.moveCount());
+
+        view.resetInteraction();
+        lastShown = null;
+        showMoveFeedback(model.moveCount() - 1);
+        refreshMoveList();
+
+        startAnalysis();
+        if (model.sideToMove() != playerSide) requestBotMove();
+
+
+    }
+
+    private static Square squareOf(String uci, int form) {
+        return Square.valueOf(uci.substring(form, form + 2).toUpperCase());
     }
 
     private boolean deepEnough(Evaluation ev) {
@@ -212,5 +281,23 @@ public class GameController {
     private void skipMove() {
         reviews.add(null);
         nextToReview++;
+    }
+
+    private void refreshAccuracy() {
+        List<Double> whiteLosses = new ArrayList<>();
+        List<Double> blackLosses = new ArrayList<>();
+
+        for(int i = 0; i < reviews.size(); i++) {
+            MoveReview r = reviews.get(i);
+            if(r == null) continue;
+
+            if(i%2 == 0) whiteLosses.add(r.loss());
+            else blackLosses.add(r.loss());
+        }
+
+        list.setAccuracy(
+                whiteLosses.isEmpty() ? null : AccuracyCalculator.accuracy(whiteLosses),
+                blackLosses.isEmpty() ? null : AccuracyCalculator.accuracy(blackLosses)
+        );
     }
 }
