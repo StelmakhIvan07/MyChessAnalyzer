@@ -14,7 +14,6 @@ import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.*;
 
 public class BoardPanel extends JPanel {
@@ -26,23 +25,8 @@ public class BoardPanel extends JPanel {
 
     private final Color bgLight = new Color(235,236,208);
     private final Color bgDark = new Color(115,160,82);
-    private static final Map<Piece, String> PIECE_ICONS = new EnumMap<>(Piece.class);
-    static {
-        // White ♔ ♕ ♖ ♗ ♘ ♙
-        PIECE_ICONS.put(Piece.WHITE_KING,    "♚");
-        PIECE_ICONS.put(Piece.WHITE_QUEEN,   "♛");
-        PIECE_ICONS.put(Piece.WHITE_ROOK,    "♜");
-        PIECE_ICONS.put(Piece.WHITE_BISHOP,  "♝");
-        PIECE_ICONS.put(Piece.WHITE_KNIGHT,  "♞");
-        PIECE_ICONS.put(Piece.WHITE_PAWN,    "♟");
-        // Black ♚ ♛ ♜ ♝ ♞ ♟
-        PIECE_ICONS.put(Piece.BLACK_KING,    "♚");
-        PIECE_ICONS.put(Piece.BLACK_QUEEN,   "♛");
-        PIECE_ICONS.put(Piece.BLACK_ROOK,    "♜");
-        PIECE_ICONS.put(Piece.BLACK_BISHOP,  "♝");
-        PIECE_ICONS.put(Piece.BLACK_KNIGHT,  "♞");
-        PIECE_ICONS.put(Piece.BLACK_PAWN,    "♟");
-    }
+
+    private final PieceIcons pieceIcons = new PieceIcons();
 
     //===============================================
     // Badge
@@ -226,17 +210,12 @@ public class BoardPanel extends JPanel {
     }
 
     private void drawPiece(Graphics2D g, Piece piece, int centerX, int centerY, int cell) {
-        String symbol = PIECE_ICONS.get(piece);
-        if (symbol == null) return;
+        if (piece == Piece.NONE) return;
 
-        g.setFont(new Font("DejaVu Sans", Font.PLAIN, (int) (cell * 0.8)));
-        FontMetrics fm = g.getFontMetrics();
-        g.setColor((piece.getPieceSide() == Side.WHITE) ? Color.WHITE : Color.BLACK);
+        int px = (int) Math.round(cell * g.getTransform().getScaleX());
 
-        int x = centerX - fm.stringWidth(symbol) / 2;
-        int y = centerY - fm.getHeight() / 2 + fm.getAscent();
-
-        g.drawString(symbol, x, y);
+        BufferedImage img = pieceIcons.get(piece, px);
+        if(img != null) g.drawImage(img, centerX - cell / 2, centerY - cell / 2, cell, cell, null);
     }
 
     private void drawBadge(Graphics2D g2, int cell) {
