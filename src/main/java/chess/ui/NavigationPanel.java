@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 
+/** Buttons « ‹ › » ↶ and the same actions on keys Home, Left, Right, End, Ctrl+Z. */
 public class NavigationPanel extends JPanel {
     public NavigationPanel(Runnable onFirst, Runnable onPrev, Runnable onNext, Runnable onLast, Runnable onUndo) {
         super(new GridLayout(1, 5));
@@ -28,6 +29,7 @@ public class NavigationPanel extends JPanel {
         return b;
     }
 
+    /** Key works anywhere in the window (WHEN_IN_FOCUSED_WINDOW), not only when this panel has focus. */
     private void bind(String key, Runnable action) {
         getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), key);
         getActionMap().put(key, new AbstractAction() {

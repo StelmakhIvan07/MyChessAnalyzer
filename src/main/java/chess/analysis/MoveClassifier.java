@@ -3,6 +3,9 @@ package chess.analysis;
 import chess.engine.Evaluation;
 import chess.model.GameResult;
 
+/**
+ * Move quality from "loss" = how many percent of win chance the moving side lost.
+ */
 public class MoveClassifier {
     public static MoveClass classify(double loss, boolean playedBest) {
         if (playedBest) return MoveClass.BEST;
@@ -27,6 +30,7 @@ public class MoveClassifier {
         return lossOf(WinChance.whitePercent(before), afterWhite, whiteMove);
     }
 
+    /** Converts both chances to the moving side's point of view; a gain counts as 0 loss. */
     private static double lossOf(double beforeWhite, double afterWhite, boolean whiteMove) {
         double b = whiteMove ? beforeWhite : 100 - beforeWhite;
         double a = whiteMove ? afterWhite  : 100 - afterWhite;

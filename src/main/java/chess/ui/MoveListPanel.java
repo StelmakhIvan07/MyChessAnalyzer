@@ -13,7 +13,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.IntConsumer;
 
+/**
+ * Right panel: accuracy of both sides + table of moves "#, White, Black".
+ * Clicking a move jumps to it; reviewed moves are colored by their class.
+ */
 public class MoveListPanel extends JPanel {
+    //==================================================
+    // Fields
+
+    //-------------------------------------
+    // Components
     private final DefaultTableModel tableModel =
             new DefaultTableModel(new Object[]{"#", "White", "Black"}, 0) {
                 @Override public boolean isCellEditable(int r, int c) { return false; }
@@ -22,11 +31,13 @@ public class MoveListPanel extends JPanel {
     private final JLabel whiteAcc = new JLabel("White: —", SwingConstants.CENTER);
     private final JLabel blackAcc = new JLabel("Black: —", SwingConstants.CENTER);
 
-
+    //-------------------------------------
+    // State
     private List<MoveReview> reviews = List.of();
     private int plyCount = 0;
-    private int current = 0;
+    private int current = 0;                 // currently shown position (number of moves played)
     private IntConsumer onSelect = i -> { };
+    //==================================================
 
     public MoveListPanel() {
         super(new BorderLayout());
@@ -46,10 +57,11 @@ public class MoveListPanel extends JPanel {
                 int row = table.rowAtPoint(e.getPoint());
                 int col = table.columnAtPoint(e.getPoint());
 
+                // row = full move, column 1 = White, column 2 = Black -> half-move index
                 int ply = row * 2 + (col - 1);
                 if(row < 0 || col < 1 || ply >= plyCount) return;
 
-                onSelect.accept(ply + 1);
+                onSelect.accept(ply + 1);   // position AFTER this move
             }
         });
 
@@ -58,6 +70,8 @@ public class MoveListPanel extends JPanel {
         setPreferredSize(new Dimension(240, 400));
     }
 
+    //==================================================
+    // Public API
     public void setOnSelect(IntConsumer c) { onSelect = c; }
 
     public void setMoves(List<String> san, List<MoveReview> reviews) {
@@ -78,6 +92,7 @@ public class MoveListPanel extends JPanel {
         plyCount = san.size();
     }
 
+    /** Highlights the current move and scrolls to it (after the table has been laid out). */
     public void setCurrent(int index) {
         current = index;
         table.repaint();
@@ -96,7 +111,10 @@ public class MoveListPanel extends JPanel {
         if(black == null) blackAcc.setText("Black: —");
         else blackAcc.setText(String.format(Locale.US, "Black: %.1f%%", black));
     }
+    //==================================================
 
+    //==================================================
+    // Rendering
     private static Color colorFor(MoveClass cls) {
         return switch (cls) {
             case BEST, EXCELLENT -> new Color(0, 130, 0);
@@ -107,6 +125,11 @@ public class MoveListPanel extends JPanel {
         };
     }
 
+    /**
+     * Decides how each table cell looks.
+     * JTable reuses one component for all cells, so every property
+     * (color, font, background) must be set on every call.
+     */
     private class PlyRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(JTable t, Object value,
@@ -136,4 +159,5 @@ public class MoveListPanel extends JPanel {
             return c;
         }
     }
+    //==================================================
 }

@@ -11,13 +11,35 @@ import java.awt.image.BufferedImage;
 import java.util.EnumMap;
 import java.util.Map;
 
+/**
+ * Piece images. SVG files are loaded once (static) and rendered
+ * to bitmaps of the needed size; bitmaps are cached until the size changes.
+ */
 public class PieceIcons {
+    //==================================================
+    // Fields
     private static final Map<Piece, SVGDocument> DOCS = new EnumMap<>(Piece.class);
     private final Map<Piece, BufferedImage> cache = new EnumMap<>(Piece.class);
 
     private int cachedSize = -1;
+    //==================================================
 
+    //==================================================
+    // Loading (runs once, when the class is first used)
+    static {
+        SVGLoader loader = new SVGLoader();
+        for (Piece p : Piece.values()) {
+            if(p == Piece.NONE) continue;
+            var url = PieceIcons.class.getResource("/pieces/" + fileName(p) + ".svg");
 
+            if (url != null) {
+                SVGDocument doc = loader.load(url);
+                DOCS.put(p, doc);
+            } else System.err.println("Piece icon not found: " + fileName(p));
+        }
+    }
+
+    /** WHITE_KNIGHT -> "wN", BLACK_PAWN -> "bP". */
     private static String fileName(Piece p) {
         String fn;
         fn = (p.getPieceSide() == Side.WHITE) ? "w" : "b";
@@ -33,18 +55,19 @@ public class PieceIcons {
 
         return fn;
     }
+    //==================================================
 
-    static {
-        SVGLoader loader = new SVGLoader();
-        for (Piece p : Piece.values()) {
-            if(p == Piece.NONE) continue;
-            var url = PieceIcons.class.getResource("/pieces/" + fileName(p) + ".svg");
+    //==================================================
+    // Rendering
+    public BufferedImage get(Piece p, int size) {
+        if(size <= 0) return null;
+        if(size != cachedSize) cache.clear();
+        cachedSize = size;
 
-            if (url != null) {
-                SVGDocument doc = loader.load(url);
-                DOCS.put(p, doc);
-            } else System.err.println("Piece icon not found: " + fileName(p));
-        }
+        return cache.computeIfAbsent(p, k -> {
+            if(DOCS.containsKey(k)) return render(DOCS.get(k), size);
+            else return null;
+        });
     }
 
     private static BufferedImage render(SVGDocument doc, int size) {
@@ -57,15 +80,5 @@ public class PieceIcons {
 
         return img;
     }
-
-    public BufferedImage get(Piece p, int size) {
-        if(size <= 0) return null;
-        if(size != cachedSize) cache.clear();
-        cachedSize = size;
-
-        return cache.computeIfAbsent(p, k -> {
-            if(DOCS.containsKey(k)) return render(DOCS.get(k), size);
-            else return null;
-        });
-    }
+    //==================================================
 }

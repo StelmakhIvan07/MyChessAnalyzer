@@ -4,23 +4,21 @@ import com.github.bhlangonijr.chesslib.*;
 import com.github.bhlangonijr.chesslib.move.*;
 import java.util.*;
 
-
+/**
+ * Game state: list of played moves + the board at the currently viewed move.
+ * "Live" means we are looking at the last move (not browsing the history).
+ */
 public class GameModel {
+    //==================================================
+    // Fields
     private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     private final Board board = new Board();
     private final List<Move> moves = new ArrayList<>();
-    private final List<String> positions = new ArrayList<>();
-    private int currentMove = 0;
+    private final List<String> positions = new ArrayList<>();   // FEN before each move + after the last
+    private int currentMove = 0;                                // how many moves are applied to board
     private GameResult finalResult = GameResult.ONGOING;
-
-    private void rebuildBoard(int idx) {
-        board.loadFromFen(START_FEN);
-        for(int i = 0; i < idx; i++){
-            board.doMove(moves.get(i));
-        }
-        currentMove = idx;
-    }
+    //==================================================
 
     public GameModel() {
         reset();
@@ -38,12 +36,18 @@ public class GameModel {
         updateResult();
     }
 
+    //==================================================
+    // Board state
     public String fen() { return board.getFen(); }
     public Side sideToMove() { return board.getSideToMove(); }
     public int moveCount() { return moves.size(); }
     public int currentIndex() { return currentMove; }
     public boolean isLive() { return currentMove == moves.size(); }
     public Piece pieceAt(Square sq) {return board.getPiece(sq); }
+    //==================================================
+
+    //==================================================
+    // Making moves
 
     public MoveResult tryMove(Square from, Square to, Piece promotion) {
         if(!isLive()) return MoveResult.NOT_LIVE;
@@ -65,24 +69,7 @@ public class GameModel {
         return MoveResult.OK;
     }
 
-    public Set<Square> legalTargets(Square from) {
-        Set<Square> targets = new HashSet<>();
-        if (!isLive() || isGameOver()) return targets;
-        for (Move m : board.legalMoves()) {
-            if (m.getFrom() == from) {
-                targets.add(m.getTo());
-            }
-        }
-        return targets;
-    }
-
-    public boolean needsPromotion(Square from, Square to) {
-        Piece p = pieceAt(from);
-        if (p.getPieceType() != PieceType.PAWN) return false;
-        Rank lastRank = (p.getPieceSide() == Side.WHITE) ? Rank.RANK_8 : Rank.RANK_1;
-        return to.getRank() == lastRank;
-    }
-
+    /** Applies an engine move like "e2e4" or "e7e8q" (5th char = promotion piece). */
     public MoveResult applyUci(String uci) {
         if (uci == null || (uci.length() != 4 && uci.length() != 5))
             return MoveResult.ILLEGAL;
@@ -111,12 +98,6 @@ public class GameModel {
         return tryMove(from, to, promotion);
     }
 
-    public boolean goTo(int idx) {
-        if(idx < 0 || moves.size() < idx) return false;
-        rebuildBoard(idx);
-        return true;
-    }
-
     public boolean undo() {
         if(!isLive() || moves.isEmpty()) return false;
         moves.removeLast();
@@ -126,7 +107,46 @@ public class GameModel {
         return true;
     }
 
-    //========================================
+    //-------------------------------------
+    // Move helpers
+    public Set<Square> legalTargets(Square from) {
+        Set<Square> targets = new HashSet<>();
+        if (!isLive() || isGameOver()) return targets;
+        for (Move m : board.legalMoves()) {
+            if (m.getFrom() == from) {
+                targets.add(m.getTo());
+            }
+        }
+        return targets;
+    }
+
+    public boolean needsPromotion(Square from, Square to) {
+        Piece p = pieceAt(from);
+        if (p.getPieceType() != PieceType.PAWN) return false;
+        Rank lastRank = (p.getPieceSide() == Side.WHITE) ? Rank.RANK_8 : Rank.RANK_1;
+        return to.getRank() == lastRank;
+    }
+    //==================================================
+
+    //==================================================
+    // Navigation
+    public boolean goTo(int idx) {
+        if(idx < 0 || moves.size() < idx) return false;
+        rebuildBoard(idx);
+        return true;
+    }
+
+    /** Replays the first idx moves from the start position. */
+    private void rebuildBoard(int idx) {
+        board.loadFromFen(START_FEN);
+        for(int i = 0; i < idx; i++){
+            board.doMove(moves.get(i));
+        }
+        currentMove = idx;
+    }
+    //==================================================
+
+    //==================================================
     // History
     public List<String> uciHistory() {
         List<String> history = new ArrayList<>();
@@ -140,13 +160,18 @@ public class GameModel {
         return List.copyOf(positions);
     }
 
+    /** Moves in human notation ("Nf3", "O-O"); chesslib needs the start FEN to build them. */
     public List<String> sanHistory() {
         MoveList san = new MoveList(START_FEN);
         san.addAll(moves);
         return List.of(san.toSanArray());
     }
-    //========================================
+    //==================================================
 
+    //==================================================
+    // Result
+
+    /** Checked after every move; it is the side to move that got mated. */
     private void updateResult() {
         if(board.isMated())
             finalResult = sideToMove() == Side.WHITE ? GameResult.BLACK_WINS : GameResult.WHITE_WINS;
@@ -158,4 +183,5 @@ public class GameModel {
 
     public boolean isGameOver()  { return result() != GameResult.ONGOING; }
     public boolean isInCheck()   { return board.isKingAttacked(); }
+    //==================================================
 }

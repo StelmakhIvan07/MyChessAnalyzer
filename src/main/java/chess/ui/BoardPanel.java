@@ -16,26 +16,55 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.*;
 
+/**
+ * Draws the board and lets the player move pieces with click-click or drag-and-drop.
+ * The panel does not decide whether a move is allowed: it passes it to MoveHandler.
+ */
 public class BoardPanel extends JPanel {
+    //==================================================
+    // Fields
+
+    //-------------------------------------
+    // Look
     private static final String[] FILES = {"a", "b", "c", "d", "e", "f", "g", "h"};
     private static final String[] RANKS = {"1", "2", "3", "4", "5", "6", "7", "8"};
-
-    private int cachedCoordCell = -1;
-    private Font coordFont;
 
     private final Color bgLight = new Color(235,236,208);
     private final Color bgDark = new Color(115,160,82);
 
+    private int cachedCoordCell = -1;      // cell size the coordinate font was made for
+    private Font coordFont;
+
     private final PieceIcons pieceIcons = new PieceIcons();
 
-    //===============================================
-    // Badge
+    //-------------------------------------
+    // Model and interaction
+    private final GameModel model;
+    private MoveHandler moveHandler;
+    private Side playerSide = Side.WHITE;
+    private boolean controlsBothSides = false;   // true in a solo game
+
+    private boolean flipped = false;             // true -> Black is at the bottom
+    private Square selected = null;
+    private Set<Square> targets = Set.of();      // legal destinations of the selected piece
+    private boolean dragging = false;
+    private int dragX, dragY;                    // mouse position while dragging
+
+    //-------------------------------------
+    // Best-move arrow
+    private Square arrowFrom, arrowTo;
+
+    //-------------------------------------
+    // Move badge
     private static final boolean BADGE_ON_LEFT = true;
     private Square badgeSquare;
     private MoveClass badgeClass;
 
+    // Badge images scaled to the current size (rebuilt when the size changes)
     private final Map<MoveClass, BufferedImage> scaledBadges = new EnumMap<>(MoveClass.class);
     private int scaledBadgeSize = -1;
+
+    // Original badge images, loaded once from resources/badges
     private static final Map<MoveClass, BufferedImage> BADGE_ICONS = new EnumMap<>(MoveClass.class);
     static {
         for (MoveClass mc : MoveClass.values()) {
@@ -47,59 +76,7 @@ public class BoardPanel extends JPanel {
             }
         }
     }
-
-    public void setBadge(Square sq, MoveClass c) {
-        if (sq == badgeSquare && c == badgeClass) return;
-        badgeSquare = sq;
-        badgeClass = c;
-        repaint();
-    }
-
-    public void clearBadge() { setBadge(null, null); }
-
-    private static BufferedImage resize(BufferedImage src, int w, int h, Object interpolation) {
-        BufferedImage dst = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = dst.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interpolation);
-        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.drawImage(src, 0, 0, w, h, null);
-        g.dispose();
-        return dst;
-    }
-
-    private static BufferedImage downscale(BufferedImage src, int target) {
-        BufferedImage img = src;
-        while (img.getWidth() / 2 >= target) {                    // зменшуємо удвічі, поки можна
-            int half = img.getWidth() / 2;
-            img = resize(img, half, half, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        }
-        return resize(img, target, target, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-    }
-
-    private BufferedImage badgeImage(MoveClass c, int d) {
-        if (d != scaledBadgeSize) {
-            scaledBadges.clear();
-            scaledBadgeSize = d;
-        }
-        return scaledBadges.computeIfAbsent(c, k -> {
-            BufferedImage src = BADGE_ICONS.get(k);
-            return src == null ? null : downscale(src, d);
-        });
-    }
-    //=======================================================
-
-    private final GameModel model;
-    private MoveHandler moveHandler;
-    private Side playerSide = Side.WHITE;
-
-    private boolean flipped = false;
-    private Square selected = null;
-    private Set<Square> targets = Set.of();
-    private boolean dragging = false;
-    private int dragX, dragY;
-
-    private Square arrowFrom, arrowTo;
+    //==================================================
 
     public BoardPanel(GameModel model) {
         this.model = model;
@@ -109,7 +86,13 @@ public class BoardPanel extends JPanel {
         addMouseMotionListener(h);
     }
 
+    //==================================================
+    // Public API (called by GameController / Main)
+
+    //-------------------------------------
+    // Setup
     public void setMoveHandler(MoveHandler h) { this.moveHandler = h; }
+
     public void setPlayerSide(Side s) {
         playerSide = s;
         flipped = (s == Side.BLACK);
@@ -117,8 +100,63 @@ public class BoardPanel extends JPanel {
         repaint();
     }
 
-    //===========================================
+    /** Solo game: the player can take pieces of the side to move. */
+    public void setControlsBothSides(boolean b) {
+        controlsBothSides = b;
+        clearSelection();
+        repaint();
+    }
+
+    public void setFlipped(boolean flipped) {
+        this.flipped = flipped;
+        repaint();
+    }
+
+    //-------------------------------------
+    // Arrow
+    public void setArrow(Square from, Square to) {
+        if(from == arrowFrom && to == arrowTo) return;
+
+        arrowFrom = from;
+        arrowTo = to;
+
+        repaint();
+    }
+
+    public void clearArrow() {
+        arrowFrom = null;
+        arrowTo = null;
+        repaint();
+    }
+
+    //-------------------------------------
+    // Badge
+    public void setBadge(Square sq, MoveClass c) {
+        if (sq == badgeSquare && c == badgeClass) return;
+        badgeSquare = sq;
+        badgeClass = c;
+        repaint();
+    }
+
+    public void clearBadge() { setBadge(null, null); }
+
+    //-------------------------------------
+    // Other
+    public void resetInteraction() {
+        clearSelection();
+        repaint();
+    }
+
+    public void showResult(GameResult r) {
+        String text = resultText(r);
+        if (text != null) JOptionPane.showMessageDialog(this, text);
+    }
+    //==================================================
+
+    //==================================================
     // Graphics
+
+    /** Draws layer by layer: cells, pieces, move targets, arrow, coordinates, badge, dragged piece. */
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -153,7 +191,7 @@ public class BoardPanel extends JPanel {
             }
         }
 
-        // Targets
+        // Targets: a dot on an empty square, a ring around a piece that can be captured
         for(int row = 0; row < 8; row++) {
             for(int col = 0; col < 8; col++) {
                 Square sq = squareAt(row, col);
@@ -204,7 +242,7 @@ public class BoardPanel extends JPanel {
         // Move badges
         drawBadge(g2, cell);
 
-        // Selected piece
+        // Dragged piece is drawn last, so it is above everything
         if (dragging && selected != null)
             drawPiece(g2, model.pieceAt(selected), dragX, dragY, cell);
     }
@@ -212,12 +250,38 @@ public class BoardPanel extends JPanel {
     private void drawPiece(Graphics2D g, Piece piece, int centerX, int centerY, int cell) {
         if (piece == Piece.NONE) return;
 
+        // real pixel size (screen scaling, e.g. 150% on Windows) for a sharp image
         int px = (int) Math.round(cell * g.getTransform().getScaleX());
 
         BufferedImage img = pieceIcons.get(piece, px);
         if(img != null) g.drawImage(img, centerX - cell / 2, centerY - cell / 2, cell, cell, null);
     }
 
+    /** Arrow = thick line from the center of "from" to the base of the head + a triangle head. */
+    private void drawArrow(Graphics2D g, Square from, Square to, int cell) {
+        if (from == null || to == null) return;
+
+        Point a = center(from, cell), b = center(to, cell);
+        double dx = b.x - a.x, dy = b.y - a.y;
+        double len = Math.hypot(dx, dy);
+        if (len < 1) return;
+        double ux = dx / len, uy = dy / len;          // unit direction vector
+        double headLen = cell * 0.38, half = cell * 0.2;
+        double bx = b.x - ux * headLen, by = b.y - uy * headLen;   // base of the head
+
+        g.setColor(new Color(60, 180, 75, 170));
+        g.setStroke(new BasicStroke(cell * 0.16f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND));
+        g.draw(new Line2D.Double(a.x, a.y, bx, by));  // body: up to the base of the head
+
+        Path2D tip = new Path2D.Double();
+        tip.moveTo(b.x, b.y);                          // tip
+        tip.lineTo(bx - uy * half, by + ux * half);    // (-uy, ux) is perpendicular to the direction
+        tip.lineTo(bx + uy * half, by - ux * half);
+        tip.closePath();
+        g.fill(tip);
+    }
+
+    /** Badge in the top corner of the square the move went to. */
     private void drawBadge(Graphics2D g2, int cell) {
         if (badgeSquare == null || badgeClass == null || cell <= 0) return;
 
@@ -231,26 +295,57 @@ public class BoardPanel extends JPanel {
         int y = c.y - cell / 2;
         g2.drawImage(img, x, y, d, d, null);
     }
-    //=================================================
+
+    //-------------------------------------
+    // Badge image scaling
+
+    /** Returns the badge scaled to d pixels; the result is cached until the size changes. */
+    private BufferedImage badgeImage(MoveClass c, int d) {
+        if (d != scaledBadgeSize) {
+            scaledBadges.clear();
+            scaledBadgeSize = d;
+        }
+        return scaledBadges.computeIfAbsent(c, k -> {
+            BufferedImage src = BADGE_ICONS.get(k);
+            return src == null ? null : downscale(src, d);
+        });
+    }
+
+    /**
+     * Shrinks a big image in steps of 2x, then does the last step with bicubic.
+     * One big step at once would look jagged.
+     */
+    private static BufferedImage downscale(BufferedImage src, int target) {
+        BufferedImage img = src;
+        while (img.getWidth() / 2 >= target) {                    // halve while possible
+            int half = img.getWidth() / 2;
+            img = resize(img, half, half, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        }
+        return resize(img, target, target, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    }
+
+    private static BufferedImage resize(BufferedImage src, int w, int h, Object interpolation) {
+        BufferedImage dst = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = dst.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interpolation);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.drawImage(src, 0, 0, w, h, null);
+        g.dispose();
+        return dst;
+    }
+    //==================================================
 
     //==================================================
     // Support methods
-    public void setFlipped(boolean flipped) {
-        this.flipped = flipped;
-        repaint();
-    }
 
-    private Point center(Square sq, int cell) {
-        int f = sq.getFile().ordinal(), r = sq.getRank().ordinal();
-        int col = flipped ? 7 - f : f;
-        int row = flipped ? r : 7 - r;
-        return new Point(col * cell + cell / 2, row * cell + cell / 2);
-    }
-
+    //-------------------------------------
+    // Coordinates: screen row/col <-> chess Square
     private int cellSize() {
         return Math.min(getWidth(), getHeight()) / 8;
     }
 
+    /** row 0 is the top of the screen; when flipped, the board is turned by 180 degrees. */
     private Square squareAt(int row, int col) {
         int r = flipped ? row : 7 - row;
         int c = flipped ? 7 - col : col;
@@ -268,19 +363,23 @@ public class BoardPanel extends JPanel {
         return squareAt(row, col);
     }
 
-    private void clearSelection() {
-        selected = null;
-        targets = Set.of();
-        dragging = false;
+    /** Pixel center of a square (inverse of squareAt). */
+    private Point center(Square sq, int cell) {
+        int f = sq.getFile().ordinal(), r = sq.getRank().ordinal();
+        int col = flipped ? 7 - f : f;
+        int row = flipped ? r : 7 - r;
+        return new Point(col * cell + cell / 2, row * cell + cell / 2);
     }
 
+    //-------------------------------------
+    // Moves
     private void attemptMove(Square from, Square to) {
         if (moveHandler == null) return;
 
         Piece promotion = null;
         if (model.needsPromotion(from, to)) {
             promotion = askPromotion();
-            if (promotion == null) {
+            if (promotion == null) {       // dialog was closed -> cancel the move
                 clearSelection();
                 repaint();
                 return;
@@ -289,20 +388,6 @@ public class BoardPanel extends JPanel {
         moveHandler.onMove(from, to, promotion);
         clearSelection();
         repaint();
-    }
-
-    public void showResult(GameResult r) {
-        String text = resultText(r);
-        if (text != null) JOptionPane.showMessageDialog(this, text);
-    }
-
-    private String resultText(GameResult r) {
-        return switch (r) {
-            case ONGOING    -> null;
-            case WHITE_WINS -> "White wins!";
-            case BLACK_WINS -> "Black wins!";
-            case DRAW       -> "Draw!";
-        };
     }
 
     private Piece askPromotion() {
@@ -323,54 +408,32 @@ public class BoardPanel extends JPanel {
         };
     }
 
-    // Methods for arrows
-    public void setArrow(Square from, Square to) {
-        if(from == arrowFrom && to == arrowTo) return;
-
-        arrowFrom = from;
-        arrowTo = to;
-
-        repaint();
+    private void clearSelection() {
+        selected = null;
+        targets = Set.of();
+        dragging = false;
     }
 
-    public void clearArrow() {
-        arrowFrom = null;
-        arrowTo = null;
-        repaint();
+    //-------------------------------------
+    // Text
+    private String resultText(GameResult r) {
+        return switch (r) {
+            case ONGOING    -> null;
+            case WHITE_WINS -> "White wins!";
+            case BLACK_WINS -> "Black wins!";
+            case DRAW       -> "Draw!";
+        };
     }
+    //==================================================
 
-    private void drawArrow(Graphics2D g, Square from, Square to, int cell) {
-        if (from == null || to == null) return;
-
-        Point a = center(from, cell), b = center(to, cell);
-        double dx = b.x - a.x, dy = b.y - a.y;
-        double len = Math.hypot(dx, dy);
-        if (len < 1) return;
-        double ux = dx / len, uy = dy / len;          // одиничний вектор напрямку
-        double headLen = cell * 0.38, half = cell * 0.2;
-        double bx = b.x - ux * headLen, by = b.y - uy * headLen;   // основа наконечника
-
-        g.setColor(new Color(60, 180, 75, 170));
-        g.setStroke(new BasicStroke(cell * 0.16f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND));
-        g.draw(new Line2D.Double(a.x, a.y, bx, by));  // тіло: до основи наконечника
-
-        Path2D tip = new Path2D.Double();
-        tip.moveTo(b.x, b.y);                          // вістря
-        tip.lineTo(bx - uy * half, by + ux * half);    // (-uy, ux) перпендикулярний до напрямку
-        tip.lineTo(bx + uy * half, by - ux * half);
-        tip.closePath();
-        g.fill(tip);
-    }
-
-    // Reset
-    public void resetInteraction() {
-        clearSelection();
-        repaint();
-    }
-    //===================================
-
-    //===================================
+    //==================================================
     // Mouse Events
+
+    /**
+     * Supports both ways to move:
+     *  - click a piece, then click a target square;
+     *  - press on a piece, drag it and release on a target square.
+     */
     private class BoardMouseListener extends MouseAdapter {
         @Override
         public void mousePressed(MouseEvent e) {
@@ -382,13 +445,15 @@ public class BoardPanel extends JPanel {
                 return;
             }
 
+            // second click of click-click
             if (selected != null && targets.contains(sq)) {
                 attemptMove(selected, sq);
                 return;
             }
 
             Piece p = model.pieceAt(sq);
-            if (p != Piece.NONE && p.getPieceSide() == playerSide) {
+            Side movable = controlsBothSides ? model.sideToMove() : playerSide;
+            if (p != Piece.NONE && p.getPieceSide() == movable) {
                 selected = sq;
                 targets = model.legalTargets(sq);
                 dragging = true;
@@ -419,8 +484,9 @@ public class BoardPanel extends JPanel {
             } else if (sq != selected) {
                 clearSelection();
             }
+            // released on the same square -> piece stays selected for click-click
             repaint();
         }
     }
-    //==========================================
+    //==================================================
 }

@@ -8,15 +8,22 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Locale;
 
+/** Vertical bar: the white part shows White's winning chances. */
 public class EvalBar extends JPanel {
+    //==================================================
+    // Fields
     private double whitePercent = 50.0;
     private String label = "0.0";
-    private boolean flipped;
+    private boolean flipped;                 // true -> White is at the top (player is Black)
+    private boolean showEvaluation = true;   // false -> draw an empty gray bar
+    //==================================================
 
     public EvalBar() {
         setPreferredSize(new Dimension(44, 640));
     }
 
+    //==================================================
+    // State
     public void setEvaluation(Evaluation ev) {
         whitePercent = WinChance.whitePercent(ev);
 
@@ -52,11 +59,20 @@ public class EvalBar extends JPanel {
         repaint();
     }
 
+    /** Show/hide the evaluation. The data is kept, it is just not drawn. */
+    public void setShowEvaluation(boolean show) {
+        showEvaluation = show;
+        repaint();
+    }
+
     public void setFlipped(boolean b) {
         flipped = b;
         repaint();
     }
+    //==================================================
 
+    //==================================================
+    // Graphics
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -64,6 +80,12 @@ public class EvalBar extends JPanel {
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
         int w = getWidth(), h = getHeight();
+
+        if (!showEvaluation) {               // analysis is off: neutral bar
+            g2.setColor(Color.GRAY);
+            g2.fillRect(0, 0, w, h);
+            return;
+        }
         int whiteH = (int) Math.round(h * whitePercent / 100.0);
         int whiteY = flipped ? 0 : h - whiteH;
 
@@ -84,5 +106,5 @@ public class EvalBar extends JPanel {
         g2.setColor(whiteLeads ? Color.DARK_GRAY : Color.LIGHT_GRAY);   // contrast
         g2.drawString(label, x, y);
     }
-
+    //==================================================
 }
